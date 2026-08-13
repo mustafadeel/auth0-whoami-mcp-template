@@ -1,0 +1,19 @@
+{
+  "title": "Auth0 Who Am I MCP",
+  "name": "auth0-whoami-mcp",
+  "version": "1.0.0",
+  "author": "mustafadeel",
+  "repository": "https://github.com/mustafadeel/auth0-whoami-mcp-template",
+  "keywords": ["auth0", "extension", "mcp", "template"],
+  "useHashName": false,
+  "description": "A forkable Auth0 Custom Extension MCP template with an authenticated whoami tool.",
+  "type": "application",
+  "runtime": "node22",
+  "category": "end_user",
+  "initialUrlPath": "/",
+  "auth0": {
+    "createClient": true,
+    "scopes": "read:resource_servers create:resource_servers"
+  },
+  "secrets": {}
+}

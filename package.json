@@ -1,0 +1,48 @@
+{
+  "name": "auth0-whoami-mcp-template",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Forkable Auth0 Custom Extension MCP template with a whoami tool.",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "clean": "rimraf dist build/bundle.js",
+    "validate": "node scripts/validate-manifest.mjs",
+    "build": "rimraf dist build/bundle.js && node scripts/validate-manifest.mjs && esbuild src/webtask.ts --bundle --platform=node --format=cjs --target=node22 --external:edge --external:superagent-proxy --outfile=dist/extension.js && mkdir -p build && cp dist/extension.js build/bundle.js && node scripts/create-extension-package.mjs && zip -j -q dist/package.zip dist/extension.js dist/package.json",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build && node scripts/smoke.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mustafadeel/auth0-whoami-mcp-template.git"
+  },
+  "license": "MIT",
+  "auth0-extension": {
+    "title": "Auth0 Who Am I MCP",
+    "useHashName": false,
+    "type": "application",
+    "category": "end_user",
+    "initialUrlPath": "/",
+    "auth0": {
+      "createClient": true,
+      "scopes": "read:resource_servers create:resource_servers"
+    },
+    "secrets": {}
+  },
+  "dependencies": {
+    "@auth0/auth0-api-js": "^1.6.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "auth0-extension-express-tools": "2.1.0",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.27.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.0"
+  }
+}

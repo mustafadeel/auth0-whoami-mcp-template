@@ -1,0 +1,10 @@
+{
+  "name": "auth0-whoami-mcp-template",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  }
+}
