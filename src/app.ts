@@ -367,6 +367,7 @@ function extensionRoutes(path: string): string[] {
 export function createExtensionApp(configReader: ConfigReader, initialRequest?: Request) {
   const app = express();
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
 
   const setupAuth = initialRequest ? setupAdminAuth(configReader, initialRequest) : undefined;
   if (setupAuth) {
