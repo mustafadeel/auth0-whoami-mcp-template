@@ -10,6 +10,7 @@ const context = {
     AUTH0_CLIENT_SECRET: "secret",
     EXTENSION_SECRET: "01234567890123456789012345678901",
   },
+  secrets: {},
 };
 
 function request(port, method, path) {
@@ -28,7 +29,12 @@ function request(port, method, path) {
   });
 }
 
-const server = http.createServer((req, res) => handler(context, req, res));
+const USE_WILDCARD_DOMAIN = 3;
+
+const server = http.createServer((req, res) => {
+  req.x_wt = { container: "auth0-whoami-mcp", jtn: "auth0-whoami-mcp", url_format: USE_WILDCARD_DOMAIN };
+  handler(context, req, res);
+});
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
 try {
