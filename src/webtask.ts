@@ -1,12 +1,23 @@
 import type { Request, Response } from "express";
 
+const webtaskTools = require("webtask-tools") as {
+  fromExpress: (app: (req: Request, res: Response) => void) => (
+    context: WebtaskContext,
+    req: Request,
+    res: Response,
+  ) => void;
+};
+
 type CreateExtensionApp = typeof import("./app").createExtensionApp;
-type ExtensionApp = ReturnType<CreateExtensionApp>;
 
 interface WebtaskContext {
   data?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+interface WebtaskRequest extends Request {
+  webtaskContext?: WebtaskContext;
 }
 
 function loadCreateExtensionApp(): CreateExtensionApp {
@@ -23,12 +34,9 @@ function readContextValue(context: WebtaskContext, key: string): string | undefi
   return typeof environmentValue === "string" ? environmentValue : undefined;
 }
 
-export const handler = (
-  context: WebtaskContext,
-  req: Parameters<ExtensionApp>[0],
-  res: Parameters<ExtensionApp>[1],
-) => {
+export const handler = webtaskTools.fromExpress((req: Request, res: Response) => {
+  const context = (req as WebtaskRequest).webtaskContext ?? {};
   const createExtensionApp = loadCreateExtensionApp();
-  const app = createExtensionApp((key) => readContextValue(context, key), req as Request);
-  app(req, res as Response);
-};
+  const app = createExtensionApp((key) => readContextValue(context, key), req);
+  app(req, res);
+});
