@@ -27,8 +27,11 @@ if (manifest.type !== "application") throw new Error('webtask.json.type must be 
 if (manifest.category !== "end_user") throw new Error('webtask.json.category must be "end_user".');
 if (manifest.initialUrlPath !== "/") throw new Error('webtask.json.initialUrlPath must be "/".');
 if (manifest.auth0?.createClient !== true) throw new Error("This template requires auth0.createClient: true.");
-if (manifest.auth0?.scopes !== "read:resource_servers create:resource_servers") {
-  throw new Error("This template requires the minimal resource-server Management API scopes.");
+if (
+  manifest.auth0?.scopes !==
+  "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
+) {
+  throw new Error("This template requires the minimal Management API scopes for setup.");
 }
 
 console.log("Validated Auth0 Custom Extension manifest.");

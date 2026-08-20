@@ -23,6 +23,8 @@ Use this repository as a public forkable starting point for an Auth0-hosted Stre
 4. Import or fully update the Custom Extension. A manifest change requires a full update/reinstall so Auth0 provisions its managed client.
 5. Open the landing page and complete **Sign in and provision**. This protected route obtains an extension-owned Management API token and creates or reuses the API resource server whose identifier is the exact MCP audience.
 6. Configure the separate `.well-known` companion Custom Extension with the displayed MCP URL and tenant issuer. The main extension cannot edit another extension's settings.
+7. On the same setup page, promote a connection to domain-level if none is promoted yet. Third-party and dynamically registered MCP clients can only authenticate through a domain-level connection; without one they have no way to show a login screen.
+8. Check the displayed Dynamic Client Registration status. If disabled, register the MCP client manually per the on-page instructions; if enabled, be aware that any client can self-register against the tenant.
 
 ## Guardrails
 

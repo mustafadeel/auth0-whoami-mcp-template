@@ -28,7 +28,7 @@
     "initialUrlPath": "/",
     "auth0": {
       "createClient": true,
-      "scopes": "read:resource_servers create:resource_servers"
+      "scopes": "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
     },
     "secrets": {}
   },
