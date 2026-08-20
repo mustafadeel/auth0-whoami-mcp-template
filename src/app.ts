@@ -364,6 +364,98 @@ function extensionRoutes(path: string): string[] {
   return [path, `/:extensionName${path}`];
 }
 
+const pageStyles = `
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 2.5rem 1.5rem; background: #f6f5f4; color: #1a1523; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
+  p { margin: 0 0 0.75rem; }
+  .lede { color: #635e6f; }
+  code, .code-block { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em; }
+  code { background: #ece9e6; padding: 0.15em 0.4em; border-radius: 4px; word-break: break-all; }
+  .card { background: #fff; border: 1px solid #e4e1e8; border-radius: 10px; padding: 1.5rem; margin-top: 1.5rem; }
+  .card.success { border-color: #b6e3c6; background: #f2fbf5; }
+  .button { display: inline-block; background: #1a1523; color: #fff; text-decoration: none; padding: 0.55em 1.1em; border-radius: 6px; font-weight: 600; }
+  .button:hover { background: #362f45; }
+  .status { color: #635e6f; font-size: 0.9em; }
+  .status.error { color: #b3261e; }
+  .code-block { display: block; background: #1a1523; color: #f6f5f4; padding: 0.9rem 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  .steps { padding-left: 1.25rem; }
+  .steps li { margin-bottom: 0.5rem; }
+  a { color: #4c1d95; }
+`;
+
+function renderSetupSection(options: { endpoint: string; setupBaseUrl: string }): string {
+  const loginHref = `${options.setupBaseUrl}${setupAdminPath}/login`;
+  const config = escapeInlineJson({ endpoint: `${options.setupBaseUrl}/setup/provision`, storageKey: setupSessionStorageKey });
+  return `
+    <section class="card" id="setup-card">
+      <h2>1. Provision the Auth0 API</h2>
+      <p class="lede">Sign in as a tenant administrator to create or reuse the Auth0 API resource server for this MCP endpoint.</p>
+      <p><a id="setup-login" class="button" href="${escapeHtml(loginHref)}">Sign in and provision</a></p>
+      <p id="setup-status" class="status"></p>
+    </section>
+    <section class="card" id="next-steps-card" hidden>
+      <h2>2. Install the OAuth discovery extension</h2>
+      <p class="lede">MCP clients discover this endpoint's authorization server through a separate <code>.well-known</code> Custom Extension. It must be installed once per tenant.</p>
+      <ol class="steps">
+        <li>In this tenant's Dashboard, go to <strong>Extensions</strong> and install <a href="https://github.com/mustafadeel/auth0-ext-wellknown" target="_blank" rel="noopener">auth0-ext-wellknown</a> (keep its name <code>.well-known</code>).</li>
+        <li>Open the installed <code>.well-known</code> extension's settings and set:</li>
+      </ol>
+      <code class="code-block" id="wellknown-config"></code>
+      <p class="lede">Once configured, connect an OAuth-capable MCP client to the endpoint below.</p>
+      <code id="mcp-endpoint">${escapeHtml(options.endpoint)}</code>
+    </section>
+    <script>
+      const setup = ${config};
+      const statusEl = document.getElementById("setup-status");
+      const token = sessionStorage.getItem(setup.storageKey);
+      if (token) {
+        statusEl.textContent = "Provisioning the Auth0 API resource server…";
+        fetch(setup.endpoint, { method: "POST", headers: { Authorization: "Bearer " + token } })
+          .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+          .then((result) => {
+            if (!result.ok) throw new Error(result.body.message || "Setup failed.");
+            document.getElementById("setup-card").classList.add("success");
+            statusEl.textContent = "Resource server " + result.body.status + ": " + result.body.audience;
+            document.getElementById("setup-login").remove();
+            const nextSteps = document.getElementById("next-steps-card");
+            nextSteps.hidden = false;
+            document.getElementById("wellknown-config").textContent =
+              "MCP_RESOURCE_URL=" + result.body.audience + "\\nAUTH0_TENANT_ORIGIN=" + result.body.issuer;
+          })
+          .catch((error) => {
+            statusEl.classList.add("error");
+            statusEl.textContent = "Setup failed: " + error.message;
+          });
+      } else {
+        statusEl.textContent = "Not signed in yet.";
+      }
+    </script>
+  `;
+}
+
+function renderPage(options: { endpoint: string; setup: string }): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Auth0 Who Am I MCP</title>
+  <style>${pageStyles}</style>
+</head>
+<body>
+  <main>
+    <h1>Auth0 Who Am I MCP</h1>
+    <p class="lede">This Custom Extension exposes an authenticated MCP endpoint.</p>
+    <p><code>${escapeHtml(options.endpoint)}</code></p>
+    ${options.setup}
+  </main>
+</body>
+</html>`;
+}
+
 export function createExtensionApp(configReader: ConfigReader, initialRequest?: Request) {
   const app = express();
   app.use(express.json());
@@ -379,9 +471,9 @@ export function createExtensionApp(configReader: ConfigReader, initialRequest?: 
     const endpoint = mcpUrl(configReader, req);
     const setupBaseUrl = installedExtensionBaseUrl(configReader, req);
     const setup = setupAuth
-      ? `<section><h2>Tenant setup</h2><p id="setup-status">Sign in as a tenant administrator to provision this endpoint's Auth0 API resource server.</p><p><a id="setup-login" href="${escapeHtml(`${setupBaseUrl}${setupAdminPath}/login`)}">Sign in and provision</a></p><script>const setup=${escapeInlineJson({ endpoint: `${setupBaseUrl}/setup/provision`, storageKey: setupSessionStorageKey })};const token=sessionStorage.getItem(setup.storageKey);if(token){const status=document.getElementById("setup-status");status.textContent="Provisioning the Auth0 API resource server…";fetch(setup.endpoint,{method:"POST",headers:{Authorization:"Bearer "+token}}).then(async response=>({ok:response.ok,body:await response.json()})).then(result=>{if(!result.ok)throw new Error(result.body.message||"Setup failed.");status.textContent="Auth0 API resource server "+result.body.status+": "+result.body.audience;document.getElementById("setup-login").remove();}).catch(error=>{status.textContent="Setup failed: "+error.message;});}</script></section>`
-      : "<section><h2>Tenant setup unavailable</h2><p>Update or reinstall this extension so Auth0 can provision its managed setup client.</p></section>";
-    res.type("html").send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Auth0 Who Am I MCP</title></head><body><main><h1>Auth0 Who Am I MCP</h1><p>This Custom Extension exposes an authenticated MCP endpoint.</p><p><code>${escapeHtml(endpoint)}</code></p><p>Connect an OAuth-capable MCP client after tenant setup succeeds.</p>${setup}</main></body></html>`);
+      ? renderSetupSection({ endpoint, setupBaseUrl })
+      : `<section class="card"><h2>Tenant setup unavailable</h2><p>Update or reinstall this extension so Auth0 can provision its managed setup client.</p></section>`;
+    res.type("html").send(renderPage({ endpoint, setup }));
   });
 
   app.get(extensionRoutes("/health"), (_req, res) => {
