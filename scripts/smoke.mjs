@@ -2,7 +2,10 @@ import { createRequire } from "node:module";
 import http from "node:http";
 
 const require = createRequire(import.meta.url);
-const { handler } = require("../dist/extension.js");
+const handler = require("../dist/extension.js");
+if (typeof handler !== "function") {
+  throw new Error(`Webtask requires the bundle to export a bare function, got ${typeof handler}`);
+}
 const context = {
   data: {
     AUTH0_DOMAIN: "tenant.example.auth0.com",

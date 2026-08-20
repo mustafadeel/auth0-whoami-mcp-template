@@ -1,3 +1,1 @@
-const { handler } = require("./build/bundle.js");
-
-module.exports = handler;
+module.exports = require("./build/bundle.js");

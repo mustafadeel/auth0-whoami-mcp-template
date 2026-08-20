@@ -34,9 +34,11 @@ function readContextValue(context: WebtaskContext, key: string): string | undefi
   return typeof environmentValue === "string" ? environmentValue : undefined;
 }
 
-export const handler = webtaskTools.fromExpress((req: Request, res: Response) => {
+const handler = webtaskTools.fromExpress((req: Request, res: Response) => {
   const context = (req as WebtaskRequest).webtaskContext ?? {};
   const createExtensionApp = loadCreateExtensionApp();
   const app = createExtensionApp((key) => readContextValue(context, key), req);
   app(req, res);
 });
+
+export = handler;

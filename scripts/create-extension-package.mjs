@@ -5,7 +5,7 @@ const runtimePackage = {
   name: packageJson.name,
   version: packageJson.version,
   private: true,
-  main: "index.js",
+  main: "extension.js",
   type: "commonjs",
   engines: packageJson.engines,
 };
