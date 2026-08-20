@@ -20,7 +20,9 @@ The template targets Node 22, derives the tenant issuer and installed MCP URL at
 3. Complete the Dashboard-admin login. The extension creates or reuses an `RS256` Auth0 API resource server whose identifier is the displayed MCP URL.
 4. Import `https://github.com/mustafadeel/auth0-ext-wellknown` as a separate Custom Extension in the same tenant. Keep its name `.well-known` and `useHashName: false`.
 5. Configure the companion with the MCP URL displayed by this extension and the tenant issuer displayed by setup.
-6. Connect Claude, Codex, or MCP Inspector to the displayed `/mcp` URL and complete OAuth.
+6. On the same setup page, promote a connection to domain-level if none is promoted yet. Third-party and dynamically registered MCP clients can only authenticate through a domain-level connection.
+7. Register the MCP client: if Dynamic Client Registration is enabled for the tenant most clients register themselves, otherwise follow the manual application setup shown on the setup page.
+8. Connect Claude, Codex, or MCP Inspector to the displayed `/mcp` URL and complete OAuth.
 
 The public MCP, health, and metadata routes never change tenant configuration. Only the Dashboard-admin-protected setup route can provision the resource server.
 

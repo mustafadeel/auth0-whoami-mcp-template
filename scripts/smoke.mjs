@@ -45,6 +45,8 @@ try {
   const landing = await request(port, "GET", "/auth0-whoami-mcp/");
   const login = await request(port, "GET", "/auth0-whoami-mcp/.extensions/setup/login");
   const provision = await request(port, "POST", "/auth0-whoami-mcp/setup/provision");
+  const status = await request(port, "GET", "/auth0-whoami-mcp/setup/status");
+  const promote = await request(port, "POST", "/auth0-whoami-mcp/setup/connections/con_test/promote");
 
   if (landing.status !== 200 || !landing.body.includes("Sign in and provision")) {
     throw new Error(`Unexpected landing response: ${landing.status}`);
@@ -55,8 +57,16 @@ try {
   if (provision.status !== 401) {
     throw new Error(`Expected unauthenticated provisioning to be rejected, received ${provision.status}`);
   }
+  if (status.status !== 401) {
+    throw new Error(`Expected unauthenticated setup status to be rejected, received ${status.status}`);
+  }
+  if (promote.status !== 401) {
+    throw new Error(`Expected unauthenticated connection promotion to be rejected, received ${promote.status}`);
+  }
 
-  console.log(`landing=${landing.status} login=${login.status} provision=${provision.status}`);
+  console.log(
+    `landing=${landing.status} login=${login.status} provision=${provision.status} status=${status.status} promote=${promote.status}`,
+  );
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

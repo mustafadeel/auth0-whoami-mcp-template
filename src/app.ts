@@ -37,6 +37,13 @@ interface ResourceServer {
   identifier: string;
 }
 
+interface Connection {
+  id: string;
+  name: string;
+  strategy: string;
+  isDomainConnection: boolean;
+}
+
 interface SetupAdminAuth {
   authenticate: RequestHandler;
   routes: RequestHandler;
@@ -251,6 +258,69 @@ async function ensureResourceServer(config: ConfigReader, audience: string) {
   }
 }
 
+async function listConnections(domain: string, token: string): Promise<Connection[]> {
+  const connections: Connection[] = [];
+  const perPage = 100;
+
+  for (let page = 0; page < 20; page += 1) {
+    const result = await managementApiJson<unknown>(domain, token, `connections?page=${page}&per_page=${perPage}`);
+    const currentPage = Array.isArray(result) ? result : [];
+    const validConnections = currentPage.filter(
+      (connection): connection is { id: string; name: string; strategy: string; is_domain_connection?: boolean } =>
+        typeof connection === "object" &&
+        connection !== null &&
+        typeof (connection as { id?: unknown }).id === "string" &&
+        typeof (connection as { name?: unknown }).name === "string" &&
+        typeof (connection as { strategy?: unknown }).strategy === "string",
+    );
+    connections.push(
+      ...validConnections.map((connection) => ({
+        id: connection.id,
+        name: connection.name,
+        strategy: connection.strategy,
+        isDomainConnection: connection.is_domain_connection === true,
+      })),
+    );
+    if (currentPage.length < perPage) break;
+  }
+
+  return connections;
+}
+
+async function promoteConnection(config: ConfigReader, connectionId: string): Promise<Connection> {
+  const { domain, token } = await managementAccessToken(config);
+  const updated = await managementApiJson<{ id: string; name: string; strategy: string; is_domain_connection?: boolean }>(
+    domain,
+    token,
+    `connections/${encodeURIComponent(connectionId)}`,
+    { body: JSON.stringify({ is_domain_connection: true }), method: "PATCH" },
+  );
+  return {
+    id: updated.id,
+    name: updated.name,
+    strategy: updated.strategy,
+    isDomainConnection: updated.is_domain_connection === true,
+  };
+}
+
+async function readDynamicClientRegistrationEnabled(domain: string, token: string): Promise<boolean> {
+  const settings = await managementApiJson<{ flags?: { enable_dynamic_client_registration?: boolean } }>(
+    domain,
+    token,
+    "tenants/settings",
+  );
+  return settings.flags?.enable_dynamic_client_registration === true;
+}
+
+async function setupStatus(config: ConfigReader) {
+  const { domain, token } = await managementAccessToken(config);
+  const [connections, dcrEnabled] = await Promise.all([
+    listConnections(domain, token),
+    readDynamicClientRegistrationEnabled(domain, token),
+  ]);
+  return { connections, dcrEnabled, hasDomainConnection: connections.some((connection) => connection.isDomainConnection) };
+}
+
 function createAuth0Verifier(domain: string, audience: string): OAuthTokenVerifier {
   const client = new ApiClient({ domain: toAuth0Domain(domain), audience });
 
@@ -275,22 +345,13 @@ function createAuth0Verifier(domain: string, audience: string): OAuthTokenVerifi
               ? claims.aud.find((audience): audience is string => typeof audience === "string") ?? ""
               : "";
       const scopes = typeof claims.scope === "string" ? claims.scope.split(" ").filter(Boolean) : [];
-      const permissions = Array.isArray(claims.permissions)
-        ? claims.permissions.filter((permission): permission is string => typeof permission === "string")
-        : [];
 
       return {
         token,
         clientId,
         scopes,
         expiresAt: typeof claims.exp === "number" ? claims.exp : undefined,
-        extra: {
-          sub,
-          name: typeof claims.name === "string" ? claims.name : undefined,
-          email: typeof claims.email === "string" ? claims.email : undefined,
-          emailVerified: typeof claims.email_verified === "boolean" ? claims.email_verified : undefined,
-          permissions,
-        },
+        extra: { sub },
       };
     },
   };
@@ -300,27 +361,11 @@ function createMcpServer(): McpServer {
   const server = new McpServer({ name: "auth0-whoami-mcp", version: "1.0.0" });
   server.registerTool(
     "whoami",
-    { description: "Return safe identity claims for the authenticated Auth0 user." },
+    { description: "Return the authenticated Auth0 user's ID." },
     async (extra) => {
       const authInfo = (extra as { authInfo?: AuthInfo } | undefined)?.authInfo;
-      const claims = authInfo?.extra as
-        | {
-            sub?: unknown;
-            name?: unknown;
-            email?: unknown;
-            emailVerified?: unknown;
-            permissions?: unknown;
-          }
-        | undefined;
-      const result = {
-        subject: typeof claims?.sub === "string" ? claims.sub : null,
-        name: typeof claims?.name === "string" ? claims.name : null,
-        email: typeof claims?.email === "string" ? claims.email : null,
-        email_verified: typeof claims?.emailVerified === "boolean" ? claims.emailVerified : null,
-        client_id: authInfo?.clientId ?? null,
-        scopes: authInfo?.scopes ?? [],
-        permissions: Array.isArray(claims?.permissions) ? claims.permissions : [],
-      };
+      const claims = authInfo?.extra as { sub?: unknown } | undefined;
+      const result = { user_id: typeof claims?.sub === "string" ? claims.sub : null };
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     },
   );
@@ -376,19 +421,27 @@ const pageStyles = `
   code { background: #ece9e6; padding: 0.15em 0.4em; border-radius: 4px; word-break: break-all; }
   .card { background: #fff; border: 1px solid #e4e1e8; border-radius: 10px; padding: 1.5rem; margin-top: 1.5rem; }
   .card.success { border-color: #b6e3c6; background: #f2fbf5; }
-  .button { display: inline-block; background: #1a1523; color: #fff; text-decoration: none; padding: 0.55em 1.1em; border-radius: 6px; font-weight: 600; }
+  .button { display: inline-block; background: #1a1523; color: #fff; text-decoration: none; padding: 0.55em 1.1em; border-radius: 6px; font-weight: 600; border: none; font-size: 0.9em; cursor: pointer; font-family: inherit; }
   .button:hover { background: #362f45; }
+  .button:disabled { background: #a49fae; cursor: default; }
   .status { color: #635e6f; font-size: 0.9em; }
   .status.error { color: #b3261e; }
   .code-block { display: block; background: #1a1523; color: #f6f5f4; padding: 0.9rem 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
   .steps { padding-left: 1.25rem; }
   .steps li { margin-bottom: 0.5rem; }
+  #connection-list { list-style: none; padding-left: 0; }
+  #connection-list li { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; background: #f6f5f4; border-radius: 6px; margin-bottom: 0.5rem; }
   a { color: #4c1d95; }
 `;
 
 function renderSetupSection(options: { endpoint: string; setupBaseUrl: string }): string {
   const loginHref = `${options.setupBaseUrl}${setupAdminPath}/login`;
-  const config = escapeInlineJson({ endpoint: `${options.setupBaseUrl}/setup/provision`, storageKey: setupSessionStorageKey });
+  const config = escapeInlineJson({
+    provisionEndpoint: `${options.setupBaseUrl}/setup/provision`,
+    statusEndpoint: `${options.setupBaseUrl}/setup/status`,
+    promoteEndpointBase: `${options.setupBaseUrl}/setup/connections`,
+    storageKey: setupSessionStorageKey,
+  });
   return `
     <section class="card" id="setup-card">
       <h2>1. Provision the Auth0 API</h2>
@@ -404,16 +457,98 @@ function renderSetupSection(options: { endpoint: string; setupBaseUrl: string })
         <li>Open the installed <code>.well-known</code> extension's settings and set:</li>
       </ol>
       <code class="code-block" id="wellknown-config"></code>
-      <p class="lede">Once configured, connect an OAuth-capable MCP client to the endpoint below.</p>
+    </section>
+    <section class="card" id="connection-card" hidden>
+      <h2>3. Promote a domain-level connection</h2>
+      <p class="lede">Third-party and dynamically registered MCP clients can only sign users in through a <strong>domain-level</strong> connection. Without one, those clients have no way to show a login screen.</p>
+      <p id="connection-status" class="status"></p>
+      <ul class="steps" id="connection-list"></ul>
+    </section>
+    <section class="card" id="client-card" hidden>
+      <h2>4. Connect an MCP client</h2>
+      <p id="dcr-status" class="status"></p>
+      <div id="dcr-enabled-note" hidden>
+        <p class="lede">Dynamic Client Registration is enabled for this tenant, so most MCP clients can register themselves automatically. This also means anyone who discovers this endpoint can register a client against your tenant. If that is not intended, disable it under Dashboard &rarr; Settings &rarr; Advanced.</p>
+      </div>
+      <div id="dcr-disabled-note" hidden>
+        <p class="lede">Dynamic Client Registration is disabled, so register the MCP client manually in this tenant:</p>
+        <ol class="steps">
+          <li>Create an application (type <strong>Native</strong> or <strong>Single Page Application</strong> depending on the client) with the <code>authorization_code</code> and <code>refresh_token</code> grants.</li>
+          <li>Add the client's redirect URI to <strong>Allowed Callback URLs</strong>.</li>
+          <li>Grant the client access to this API (<code>Applications &rarr; APIs &rarr; this API &rarr; Machine to Machine Applications</code>, or the client's <strong>APIs</strong> tab) with audience:</li>
+        </ol>
+        <code id="client-audience"></code>
+      </div>
+      <p class="lede">Once a domain-level connection exists and a client is registered, connect an OAuth-capable MCP client to the endpoint below.</p>
       <code id="mcp-endpoint">${escapeHtml(options.endpoint)}</code>
     </section>
     <script>
       const setup = ${config};
       const statusEl = document.getElementById("setup-status");
       const token = sessionStorage.getItem(setup.storageKey);
+
+      function renderConnections(connections) {
+        const list = document.getElementById("connection-list");
+        list.innerHTML = "";
+        const domainConnection = connections.find((c) => c.isDomainConnection);
+        const connectionStatus = document.getElementById("connection-status");
+        if (domainConnection) {
+          connectionStatus.textContent = "Domain-level connection: " + domainConnection.name + " (" + domainConnection.strategy + ")";
+          document.getElementById("connection-card").classList.add("success");
+          return;
+        }
+        connectionStatus.textContent = connections.length
+          ? "No domain-level connection yet. Promote one below:"
+          : "No connections found in this tenant yet. Create one first, then reload this page.";
+        connections.forEach((connection) => {
+          const item = document.createElement("li");
+          const label = document.createElement("span");
+          label.textContent = connection.name + " (" + connection.strategy + ") ";
+          const button = document.createElement("button");
+          button.textContent = "Promote";
+          button.className = "button";
+          button.addEventListener("click", () => {
+            button.disabled = true;
+            button.textContent = "Promoting…";
+            fetch(setup.promoteEndpointBase + "/" + encodeURIComponent(connection.id) + "/promote", {
+              method: "POST",
+              headers: { Authorization: "Bearer " + token },
+            })
+              .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+              .then((result) => {
+                if (!result.ok) throw new Error(result.body.message || "Promotion failed.");
+                connectionStatus.textContent = "Domain-level connection: " + result.body.connection.name + " (" + result.body.connection.strategy + ")";
+                document.getElementById("connection-card").classList.add("success");
+                list.innerHTML = "";
+              })
+              .catch((error) => {
+                button.disabled = false;
+                button.textContent = "Promote";
+                connectionStatus.classList.add("error");
+                connectionStatus.textContent = "Promotion failed: " + error.message;
+              });
+          });
+          item.appendChild(label);
+          item.appendChild(button);
+          list.appendChild(item);
+        });
+      }
+
+      function renderDcrStatus(dcrEnabled, audience) {
+        const dcrStatus = document.getElementById("dcr-status");
+        document.getElementById("client-audience").textContent = audience;
+        if (dcrEnabled) {
+          dcrStatus.textContent = "Dynamic Client Registration: enabled";
+          document.getElementById("dcr-enabled-note").hidden = false;
+        } else {
+          dcrStatus.textContent = "Dynamic Client Registration: disabled";
+          document.getElementById("dcr-disabled-note").hidden = false;
+        }
+      }
+
       if (token) {
         statusEl.textContent = "Provisioning the Auth0 API resource server…";
-        fetch(setup.endpoint, { method: "POST", headers: { Authorization: "Bearer " + token } })
+        fetch(setup.provisionEndpoint, { method: "POST", headers: { Authorization: "Bearer " + token } })
           .then(async (response) => ({ ok: response.ok, body: await response.json() }))
           .then((result) => {
             if (!result.ok) throw new Error(result.body.message || "Setup failed.");
@@ -424,6 +559,16 @@ function renderSetupSection(options: { endpoint: string; setupBaseUrl: string })
             nextSteps.hidden = false;
             document.getElementById("wellknown-config").textContent =
               "MCP_RESOURCE_URL=" + result.body.audience + "\\nAUTH0_TENANT_ORIGIN=" + result.body.issuer;
+
+            document.getElementById("connection-card").hidden = false;
+            document.getElementById("client-card").hidden = false;
+            return fetch(setup.statusEndpoint, { headers: { Authorization: "Bearer " + token } })
+              .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+              .then((statusResult) => {
+                if (!statusResult.ok) throw new Error(statusResult.body.message || "Unable to read setup status.");
+                renderConnections(statusResult.body.connections);
+                renderDcrStatus(statusResult.body.dcrEnabled, result.body.audience);
+              });
           })
           .catch((error) => {
             statusEl.classList.add("error");
@@ -508,6 +653,23 @@ export function createExtensionApp(configReader: ConfigReader, initialRequest?: 
           resourceServerId: provisioned.resourceServerId,
           status: provisioned.status,
         });
+      } catch (error) {
+        return next(error);
+      }
+    });
+
+    app.get(extensionRoutes("/setup/status"), setupAuth.authenticate, async (_req, res, next) => {
+      try {
+        return res.status(200).json(await setupStatus(configReader));
+      } catch (error) {
+        return next(error);
+      }
+    });
+
+    app.post(extensionRoutes("/setup/connections/:connectionId/promote"), setupAuth.authenticate, async (req, res, next) => {
+      try {
+        const connection = await promoteConnection(configReader, req.params.connectionId);
+        return res.status(200).json({ connection });
       } catch (error) {
         return next(error);
       }
