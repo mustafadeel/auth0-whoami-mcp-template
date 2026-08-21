@@ -612,17 +612,12 @@ export function createExtensionApp(configReader: ConfigReader, initialRequest?: 
     app.use("/:extensionName", setupAuth.routes);
   }
 
-  app.get(extensionRoutes("/"), (req, res) => {
-    const endpoint = mcpUrl(configReader, req);
-    const setupBaseUrl = installedExtensionBaseUrl(configReader, req);
-    const setup = setupAuth
-      ? renderSetupSection({ endpoint, setupBaseUrl })
-      : `<section class="card"><h2>Tenant setup unavailable</h2><p>Update or reinstall this extension so Auth0 can provision its managed setup client.</p></section>`;
-    res.type("html").send(renderPage({ endpoint, setup }));
-  });
-
   app.get(extensionRoutes("/health"), (_req, res) => {
     res.status(200).json({ status: "ok", runtime: process.version });
+  });
+
+  app.get(extensionRoutes("/meta"), (_req, res) => {
+    res.status(200).json(require("../webtask.json"));
   });
 
   app.get(
@@ -685,6 +680,15 @@ export function createExtensionApp(configReader: ConfigReader, initialRequest?: 
     } catch (error) {
       next(error);
     }
+  });
+
+  app.get(extensionRoutes("/"), (req, res) => {
+    const endpoint = mcpUrl(configReader, req);
+    const setupBaseUrl = installedExtensionBaseUrl(configReader, req);
+    const setup = setupAuth
+      ? renderSetupSection({ endpoint, setupBaseUrl })
+      : `<section class="card"><h2>Tenant setup unavailable</h2><p>Update or reinstall this extension so Auth0 can provision its managed setup client.</p></section>`;
+    res.type("html").send(renderPage({ endpoint, setup }));
   });
 
   app.use((error: unknown, _req: Request, res: Response, _next: unknown) => {
