@@ -1,10 +1,35 @@
 {
   "name": "auth0-whoami-mcp-template",
   "version": "1.0.0",
+  "description": "Forkable Auth0 Custom Extension MCP template with a whoami tool.",
+  "author": "mustafadeel",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mustafadeel/auth0-whoami-mcp-template.git"
+  },
+  "keywords": [
+    "auth0",
+    "extension",
+    "mcp",
+    "template"
+  ],
   "private": true,
   "main": "extension.js",
   "type": "commonjs",
   "engines": {
     "node": ">=22"
+  },
+  "license": "MIT",
+  "auth0-extension": {
+    "title": "Auth0 Who Am I MCP",
+    "logoUrl": "https://upload.wikimedia.org/wikipedia/commons/f/fe/Model_Context_Protocol_logo.svg",
+    "useHashName": false,
+    "type": "application",
+    "category": "end_user",
+    "initialUrlPath": "/",
+    "auth0": {
+      "createClient": true,
+      "scopes": "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
+    }
   }
 }

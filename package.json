@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "description": "Forkable Auth0 Custom Extension MCP template with a whoami tool.",
+  "author": "mustafadeel",
+  "keywords": ["auth0", "extension", "mcp", "template"],
   "main": "index.js",
   "type": "commonjs",
   "engines": {
@@ -22,6 +24,7 @@
   "license": "MIT",
   "auth0-extension": {
     "title": "Auth0 Who Am I MCP",
+    "logoUrl": "https://upload.wikimedia.org/wikipedia/commons/f/fe/Model_Context_Protocol_logo.svg",
     "useHashName": false,
     "type": "application",
     "category": "end_user",
@@ -29,8 +32,7 @@
     "auth0": {
       "createClient": true,
       "scopes": "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
-    },
-    "secrets": {}
+    }
   },
   "dependencies": {
     "@auth0/auth0-api-js": "^1.6.1",
@@ -44,6 +46,7 @@
     "@types/node": "^22.0.0",
     "esbuild": "^0.27.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "webtask-json-validator": "^4.1.1"
   }
 }

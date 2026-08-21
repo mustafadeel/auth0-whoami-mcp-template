@@ -43,6 +43,8 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 try {
   const port = server.address().port;
   const landing = await request(port, "GET", "/auth0-whoami-mcp/");
+  const health = await request(port, "GET", "/auth0-whoami-mcp/health");
+  const meta = await request(port, "GET", "/auth0-whoami-mcp/meta");
   const login = await request(port, "GET", "/auth0-whoami-mcp/.extensions/setup/login");
   const provision = await request(port, "POST", "/auth0-whoami-mcp/setup/provision");
   const status = await request(port, "GET", "/auth0-whoami-mcp/setup/status");
@@ -50,6 +52,12 @@ try {
 
   if (landing.status !== 200 || !landing.body.includes("Sign in and provision")) {
     throw new Error(`Unexpected landing response: ${landing.status}`);
+  }
+  if (health.status !== 200 || !JSON.parse(health.body).status) {
+    throw new Error(`Unexpected health response: ${health.status} ${health.body}`);
+  }
+  if (meta.status !== 200 || JSON.parse(meta.body).name !== "auth0-whoami-mcp") {
+    throw new Error(`Unexpected meta response: ${meta.status} ${meta.body}`);
   }
   if (login.status !== 302 || !String(login.location).includes("/authorize")) {
     throw new Error(`Unexpected login response: ${login.status} ${login.location}`);
@@ -65,7 +73,7 @@ try {
   }
 
   console.log(
-    `landing=${landing.status} login=${login.status} provision=${provision.status} status=${status.status} promote=${promote.status}`,
+    `landing=${landing.status} health=${health.status} meta=${meta.status} login=${login.status} provision=${provision.status} status=${status.status} promote=${promote.status}`,
   );
 } finally {
   await new Promise((resolve) => server.close(resolve));
