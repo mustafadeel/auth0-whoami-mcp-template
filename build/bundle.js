@@ -185277,6 +185277,7 @@ var require_webtask = __commonJS({
       useHashName: false,
       description: "A forkable Auth0 Custom Extension MCP template with an authenticated whoami tool.",
       type: "application",
+      runtime: "node22",
       category: "end_user",
       initialUrlPath: "/",
       auth0: {
