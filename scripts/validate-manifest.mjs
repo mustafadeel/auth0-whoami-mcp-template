@@ -11,6 +11,7 @@ const requiredFields = [
   "useHashName",
   "description",
   "type",
+  "runtime",
   "category",
   "initialUrlPath",
   "auth0",
@@ -23,6 +24,7 @@ for (const field of requiredFields) {
 if ("secrets" in manifest && Object.keys(manifest.secrets).length === 0) {
   throw new Error("webtask.json.secrets must be omitted entirely, not an empty object.");
 }
+if (manifest.runtime !== "node22") throw new Error('webtask.json.runtime must be "node22".');
 if (manifest.type !== "application") throw new Error('webtask.json.type must be "application".');
 if (manifest.category !== "end_user") throw new Error('webtask.json.category must be "end_user".');
 if (manifest.initialUrlPath !== "/") throw new Error('webtask.json.initialUrlPath must be "/".');
