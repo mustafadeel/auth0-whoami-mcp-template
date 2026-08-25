@@ -1,12 +1,12 @@
 import type { Request, RequestHandler, Response } from "express";
 import express from "express";
 import { ApiClient, ProtectedResourceMetadataBuilder } from "@auth0/auth0-api-js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import type { OAuthTokenVerifier } from "@modelcontextprotocol/sdk/server/auth/provider.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpServer } from "./mcp-server";
 
 export type ConfigReader = (key: string) => string | undefined;
 
@@ -355,21 +355,6 @@ function createAuth0Verifier(domain: string, audience: string): OAuthTokenVerifi
       };
     },
   };
-}
-
-function createMcpServer(): McpServer {
-  const server = new McpServer({ name: "auth0-whoami-mcp", version: "1.0.0" });
-  server.registerTool(
-    "whoami",
-    { description: "Return the authenticated Auth0 user's ID." },
-    async (extra) => {
-      const authInfo = (extra as { authInfo?: AuthInfo } | undefined)?.authInfo;
-      const claims = authInfo?.extra as { sub?: unknown } | undefined;
-      const result = { user_id: typeof claims?.sub === "string" ? claims.sub : null };
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
-    },
-  );
-  return server;
 }
 
 function bearerAuth(config: ConfigReader, req: Request): RequestHandler {
