@@ -185600,12 +185600,10 @@ function renderSetupSection(options2) {
     </section>
     <section class="card" id="next-steps-card" hidden>
       <h2>2. Install the OAuth discovery extension</h2>
-      <p class="lede">MCP clients discover this endpoint's authorization server through a separate <code>.well-known</code> Custom Extension. It must be installed once per tenant.</p>
+      <p class="lede">MCP clients discover this endpoint's authorization server through a separate <code>.well-known</code> Custom Extension. It must be installed once per tenant and needs no configuration &mdash; it derives everything it needs from the request itself.</p>
       <ol class="steps">
         <li>In this tenant's Dashboard, go to <strong>Extensions</strong> and install <a href="https://github.com/mustafadeel/auth0-ext-wellknown" target="_blank" rel="noopener">auth0-ext-wellknown</a> (keep its name <code>.well-known</code>).</li>
-        <li>Open the installed <code>.well-known</code> extension's settings and set:</li>
       </ol>
-      <code class="code-block" id="wellknown-config"></code>
     </section>
     <section class="card" id="connection-card" hidden>
       <h2>3. Promote a domain-level connection</h2>
@@ -185706,8 +185704,6 @@ function renderSetupSection(options2) {
             document.getElementById("setup-login").remove();
             const nextSteps = document.getElementById("next-steps-card");
             nextSteps.hidden = false;
-            document.getElementById("wellknown-config").textContent =
-              "MCP_RESOURCE_URL=" + result.body.audience + "\\nAUTH0_TENANT_ORIGIN=" + result.body.issuer;
 
             document.getElementById("connection-card").hidden = false;
             document.getElementById("client-card").hidden = false;
