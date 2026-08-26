@@ -185304,7 +185304,7 @@ var require_webtask = __commonJS({
       initialUrlPath: "/",
       auth0: {
         createClient: true,
-        scopes: "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
+        scopes: "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings update:tenant_settings create:client_grants read:client_grants"
       }
     };
   }
@@ -185475,6 +185475,43 @@ async function ensureResourceServer(config2, audience) {
     return { audience, resourceServerId: concurrentResource.id, status: "reused" };
   }
 }
+async function findThirdPartyClientGrant(domain, token, audience) {
+  const grants = await managementApiJson(domain, token, `client-grants?audience=${encodeURIComponent(audience)}`);
+  const currentPage = Array.isArray(grants) ? grants : [];
+  return currentPage.find(
+    (grant) => typeof grant === "object" && grant !== null && typeof grant.id === "string" && grant.default_for === "third_party_clients"
+  );
+}
+async function ensureThirdPartyClientGrant(config2, audience) {
+  const { domain, token } = await managementAccessToken(config2);
+  const existing = await findThirdPartyClientGrant(domain, token, audience);
+  if (existing) return { status: "reused" };
+  try {
+    await managementApiJson(domain, token, "client-grants", {
+      body: JSON.stringify({
+        audience,
+        default_for: "third_party_clients",
+        allow_all_scopes: true,
+        subject_type: "user"
+      }),
+      method: "POST"
+    });
+    return { status: "created" };
+  } catch (error2) {
+    if (!(error2 instanceof ManagementApiError) || error2.status !== 409) throw error2;
+    const concurrentGrant = await findThirdPartyClientGrant(domain, token, audience);
+    if (!concurrentGrant) throw error2;
+    return { status: "reused" };
+  }
+}
+async function ensureResourceParameterProfile(domain, token) {
+  const settings = await managementApiJson(domain, token, "tenants/settings");
+  if (settings.resource_parameter_profile === "compatibility") return;
+  await managementApiJson(domain, token, "tenants/settings", {
+    body: JSON.stringify({ resource_parameter_profile: "compatibility" }),
+    method: "PATCH"
+  });
+}
 async function listConnections(domain, token) {
   const connections = [];
   const perPage = 100;
@@ -185511,21 +185548,39 @@ async function promoteConnection(config2, connectionId) {
     isDomainConnection: updated.is_domain_connection === true
   };
 }
-async function readDynamicClientRegistrationEnabled(domain, token) {
-  const settings = await managementApiJson(
-    domain,
-    token,
-    "tenants/settings"
-  );
-  return settings.flags?.enable_dynamic_client_registration === true;
+async function readThirdPartyClientFlags(domain, token) {
+  const settings = await managementApiJson(domain, token, "tenants/settings");
+  return {
+    dcrEnabled: settings.flags?.enable_dynamic_client_registration === true,
+    cimdEnabled: settings.client_id_metadata_document_supported === true
+  };
+}
+async function enableDynamicClientRegistration(config2) {
+  const { domain, token } = await managementAccessToken(config2);
+  await managementApiJson(domain, token, "tenants/settings", {
+    body: JSON.stringify({ flags: { enable_dynamic_client_registration: true } }),
+    method: "PATCH"
+  });
+}
+async function enableClientIdMetadataDocument(config2) {
+  const { domain, token } = await managementAccessToken(config2);
+  await managementApiJson(domain, token, "tenants/settings", {
+    body: JSON.stringify({ client_id_metadata_document_supported: true }),
+    method: "PATCH"
+  });
 }
 async function setupStatus(config2) {
   const { domain, token } = await managementAccessToken(config2);
-  const [connections, dcrEnabled] = await Promise.all([
+  const [connections, flags] = await Promise.all([
     listConnections(domain, token),
-    readDynamicClientRegistrationEnabled(domain, token)
+    readThirdPartyClientFlags(domain, token)
   ]);
-  return { connections, dcrEnabled, hasDomainConnection: connections.some((connection) => connection.isDomainConnection) };
+  return {
+    connections,
+    dcrEnabled: flags.dcrEnabled,
+    cimdEnabled: flags.cimdEnabled,
+    hasDomainConnection: connections.some((connection) => connection.isDomainConnection)
+  };
 }
 function createAuth0Verifier(domain, audience) {
   const client = new ApiClient({ domain: toAuth0Domain(domain), audience });
@@ -185589,6 +185644,8 @@ function renderSetupSection(options2) {
     provisionEndpoint: `${options2.setupBaseUrl}/setup/provision`,
     statusEndpoint: `${options2.setupBaseUrl}/setup/status`,
     promoteEndpointBase: `${options2.setupBaseUrl}/setup/connections`,
+    dcrEnableEndpoint: `${options2.setupBaseUrl}/setup/dcr/enable`,
+    cimdEnableEndpoint: `${options2.setupBaseUrl}/setup/cimd/enable`,
     storageKey: setupSessionStorageKey
   });
   return `
@@ -185618,13 +185675,20 @@ function renderSetupSection(options2) {
         <p class="lede">Dynamic Client Registration is enabled for this tenant, so most MCP clients can register themselves automatically. This also means anyone who discovers this endpoint can register a client against your tenant. If that is not intended, disable it under Dashboard &rarr; Settings &rarr; Advanced.</p>
       </div>
       <div id="dcr-disabled-note" hidden>
-        <p class="lede">Dynamic Client Registration is disabled, so register the MCP client manually in this tenant:</p>
+        <p class="lede">Dynamic Client Registration is disabled. Enable it so most MCP clients can register themselves automatically:</p>
+        <p><button id="dcr-enable" class="button" type="button">Enable Dynamic Client Registration</button></p>
+        <p class="lede">Or register the MCP client manually in this tenant:</p>
         <ol class="steps">
           <li>Create an application (type <strong>Native</strong> or <strong>Single Page Application</strong> depending on the client) with the <code>authorization_code</code> and <code>refresh_token</code> grants.</li>
           <li>Add the client's redirect URI to <strong>Allowed Callback URLs</strong>.</li>
           <li>Grant the client access to this API (<code>Applications &rarr; APIs &rarr; this API &rarr; Machine to Machine Applications</code>, or the client's <strong>APIs</strong> tab) with audience:</li>
         </ol>
         <code id="client-audience"></code>
+      </div>
+      <p id="cimd-status" class="status"></p>
+      <div id="cimd-disabled-note" hidden>
+        <p class="lede">Client ID Metadata Document support is disabled. Enabling it lets MCP clients authenticate using a client ID that is itself a URL to their own metadata, without pre-registration.</p>
+        <p><button id="cimd-enable" class="button" type="button">Enable Client ID Metadata Document support</button></p>
       </div>
       <p class="lede">Once a domain-level connection exists and a client is registered, connect an OAuth-capable MCP client to the endpoint below.</p>
       <code id="mcp-endpoint">${escapeHtml(options2.endpoint)}</code>
@@ -185681,6 +185745,27 @@ function renderSetupSection(options2) {
         });
       }
 
+      function enableTenantFlag(button, endpoint, statusEl, statusText, noteId) {
+        button.addEventListener("click", () => {
+          button.disabled = true;
+          button.textContent = "Enabling\u2026";
+          fetch(endpoint, { method: "POST", headers: { Authorization: "Bearer " + token } })
+            .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+            .then((result) => {
+              if (!result.ok) throw new Error(result.body.message || "Enabling failed.");
+              statusEl.textContent = statusText;
+              statusEl.classList.remove("error");
+              document.getElementById(noteId).hidden = true;
+            })
+            .catch((error) => {
+              button.disabled = false;
+              button.textContent = button.dataset.originalLabel;
+              statusEl.classList.add("error");
+              statusEl.textContent = "Enabling failed: " + error.message;
+            });
+        });
+      }
+
       function renderDcrStatus(dcrEnabled, audience) {
         const dcrStatus = document.getElementById("dcr-status");
         document.getElementById("client-audience").textContent = audience;
@@ -185690,6 +185775,22 @@ function renderSetupSection(options2) {
         } else {
           dcrStatus.textContent = "Dynamic Client Registration: disabled";
           document.getElementById("dcr-disabled-note").hidden = false;
+          const dcrButton = document.getElementById("dcr-enable");
+          dcrButton.dataset.originalLabel = dcrButton.textContent;
+          enableTenantFlag(dcrButton, setup.dcrEnableEndpoint, dcrStatus, "Dynamic Client Registration: enabled", "dcr-disabled-note");
+        }
+      }
+
+      function renderCimdStatus(cimdEnabled) {
+        const cimdStatus = document.getElementById("cimd-status");
+        if (cimdEnabled) {
+          cimdStatus.textContent = "Client ID Metadata Document support: enabled";
+        } else {
+          cimdStatus.textContent = "Client ID Metadata Document support: disabled";
+          document.getElementById("cimd-disabled-note").hidden = false;
+          const cimdButton = document.getElementById("cimd-enable");
+          cimdButton.dataset.originalLabel = cimdButton.textContent;
+          enableTenantFlag(cimdButton, setup.cimdEnableEndpoint, cimdStatus, "Client ID Metadata Document support: enabled", "cimd-disabled-note");
         }
       }
 
@@ -185713,6 +185814,7 @@ function renderSetupSection(options2) {
                 if (!statusResult.ok) throw new Error(statusResult.body.message || "Unable to read setup status.");
                 renderConnections(statusResult.body.connections);
                 renderDcrStatus(statusResult.body.dcrEnabled, result.body.audience);
+                renderCimdStatus(statusResult.body.cimdEnabled);
               });
           })
           .catch((error) => {
@@ -185777,12 +185879,19 @@ function createExtensionApp(configReader, initialRequest) {
   if (setupAuth) {
     app.post(extensionRoutes("/setup/provision"), setupAuth.authenticate, async (req, res, next) => {
       try {
-        const provisioned = await ensureResourceServer(configReader, mcpUrl(configReader, req));
+        const audience = mcpUrl(configReader, req);
+        const provisioned = await ensureResourceServer(configReader, audience);
+        const { domain, token } = await managementAccessToken(configReader);
+        const [clientGrant] = await Promise.all([
+          ensureThirdPartyClientGrant(configReader, audience),
+          ensureResourceParameterProfile(domain, token)
+        ]);
         return res.status(200).json({
           audience: provisioned.audience,
           issuer: tenantOrigin(configReader),
           resourceServerId: provisioned.resourceServerId,
-          status: provisioned.status
+          status: provisioned.status,
+          clientGrantStatus: clientGrant.status
         });
       } catch (error2) {
         return next(error2);
@@ -185799,6 +185908,22 @@ function createExtensionApp(configReader, initialRequest) {
       try {
         const connection = await promoteConnection(configReader, req.params.connectionId);
         return res.status(200).json({ connection });
+      } catch (error2) {
+        return next(error2);
+      }
+    });
+    app.post(extensionRoutes("/setup/dcr/enable"), setupAuth.authenticate, async (_req, res, next) => {
+      try {
+        await enableDynamicClientRegistration(configReader);
+        return res.status(200).json({ dcrEnabled: true });
+      } catch (error2) {
+        return next(error2);
+      }
+    });
+    app.post(extensionRoutes("/setup/cimd/enable"), setupAuth.authenticate, async (_req, res, next) => {
+      try {
+        await enableClientIdMetadataDocument(configReader);
+        return res.status(200).json({ cimdEnabled: true });
       } catch (error2) {
         return next(error2);
       }

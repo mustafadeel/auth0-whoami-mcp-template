@@ -31,7 +31,7 @@ if (manifest.initialUrlPath !== "/") throw new Error('webtask.json.initialUrlPat
 if (manifest.auth0?.createClient !== true) throw new Error("This template requires auth0.createClient: true.");
 if (
   manifest.auth0?.scopes !==
-  "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings"
+  "read:resource_servers create:resource_servers read:connections update:connections read:tenant_settings update:tenant_settings create:client_grants read:client_grants"
 ) {
   throw new Error("This template requires the minimal Management API scopes for setup.");
 }
