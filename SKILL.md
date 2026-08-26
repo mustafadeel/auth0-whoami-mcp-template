@@ -60,10 +60,10 @@ Keep both manifests' `auth0.scopes`, `title`, `logoUrl`, etc. in sync by hand �
    ```
    `main` and `master` drifting out of sync is a common, easy-to-miss failure mode — always re-check `git ls-remote origin` shows the same SHA for both after any change.
 4. Import or fully update the Custom Extension from the Dashboard's Extensions page. **A manifest change (new scopes, title, logo, anything under `auth0-extension`) requires a full update/reinstall, not a code-only redeploy** — Auth0 only re-reads the manifest and re-provisions the managed client on install/update, not on every request.
-5. Open the landing page (the extension's tile, or the installed URL directly) and complete **Sign in and provision** (step 1 on the page). This protected route obtains an extension-owned Management API token and creates or reuses the API resource server whose identifier is the exact MCP audience.
+5. Open the landing page (the extension's tile, or the installed URL directly) and complete **Sign in and provision** (step 1 on the page). This protected route obtains an extension-owned Management API token and: creates or reuses the API resource server whose identifier is the exact MCP audience; creates or reuses a client grant on that resource server with `default_for: "third_party_clients"`, `allow_all_scopes: true`, `subject_type: "user"` (without this, a DCR-registered or otherwise not-pre-authorized client has no scope grant to request against the API at all); and sets the tenant's `resource_parameter_profile` to `"compatibility"` if it isn't already, since third-party/DCR clients depend on it.
 6. Step 2 on the same page: install `https://github.com/mustafadeel/auth0-ext-wellknown` as a separate Custom Extension in the same tenant (name `.well-known`, `useHashName: false`). It requires no configuration — it derives the MCP resource URL and tenant issuer from each request automatically.
 7. Step 3: promote a connection to domain-level if none is promoted yet. Third-party and dynamically registered MCP clients can only authenticate through a domain-level connection — without one they have no way to show a login screen at all. This is a hard requirement for Dynamic Client Registration specifically, since DCR-created clients can't be individually mapped to a connection at creation time.
-8. Step 4: check the displayed Dynamic Client Registration status. If enabled, most MCP clients register themselves automatically (and be aware anyone who discovers the endpoint can also self-register a client against the tenant — consider disabling DCR under Dashboard → Settings → Advanced if that's not intended). If disabled, register the client manually per the on-page instructions (grant types, callback URL, audience).
+8. Step 4: check the displayed Dynamic Client Registration and Client ID Metadata Document (CIMD) status. If either is disabled, an **Enable** button on the page flips it on directly (`PATCH tenants/settings`); be aware enabling DCR means anyone who discovers the endpoint can self-register a client against the tenant — disable it again under Dashboard → Settings → Advanced if that's not intended. If you'd rather not enable DCR/CIMD at all, register the client manually per the on-page instructions (grant types, callback URL, audience).
 9. Connect an OAuth-capable MCP client (Claude, Codex, MCP Inspector) to the displayed `/mcp` URL and complete OAuth.
 
 ## Routes
@@ -74,9 +74,11 @@ Keep both manifests' `auth0.scopes`, `title`, `logoUrl`, etc. in sync by hand �
 | `GET /health` | public | `{ status, runtime }` liveness check |
 | `GET /meta` | public | Serves `webtask.json`'s contents verbatim |
 | `GET /.well-known/oauth-protected-resource(/*)` | public | RFC 9728 protected-resource metadata for this MCP endpoint |
-| `POST /setup/provision` | Dashboard-admin session | Creates/reuses the resource server |
-| `GET /setup/status` | Dashboard-admin session | Lists connections and DCR status for steps 3–4 |
+| `POST /setup/provision` | Dashboard-admin session | Creates/reuses the resource server, its third-party client grant, and corrects `resource_parameter_profile` |
+| `GET /setup/status` | Dashboard-admin session | Lists connections and DCR/CIMD status for steps 3–4 |
 | `POST /setup/connections/:id/promote` | Dashboard-admin session | Sets `is_domain_connection: true` |
+| `POST /setup/dcr/enable` | Dashboard-admin session | Sets `flags.enable_dynamic_client_registration: true` |
+| `POST /setup/cimd/enable` | Dashboard-admin session | Sets `client_id_metadata_document_supported: true` |
 | `ALL /mcp` | bearer token | The MCP server itself |
 
 Every route is registered twice via `extensionRoutes(path)`, which returns `[path, "/:extensionName" + path]` — Webtask strips the extension's own name prefix from `req.url` before Express sees the request (wildcard-domain installs), but the un-stripped `/:extensionName/...` form stays reachable as a fallback for other URL formats. **Route registration order matters**: Express's trailing-slash-optional matching means `/:extensionName/` (the landing route's pattern) will shadow any other single-segment route registered before it — this bit `/health` and `/meta` in the past. The landing route (`GET /`) must be registered last, after every other route.

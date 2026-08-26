@@ -42,10 +42,10 @@ If a tool needs to call the Auth0 Management API (beyond what the setup flow alr
 
 1. Perform a full Custom Extension import or update from this public repository. Do not use a code-only redeploy when the manifest changes.
 2. Open the installed extension and select **Sign in and provision**.
-3. Complete the Dashboard-admin login. The extension creates or reuses an `RS256` Auth0 API resource server whose identifier is the displayed MCP URL.
+3. Complete the Dashboard-admin login. The extension creates or reuses an `RS256` Auth0 API resource server whose identifier is the displayed MCP URL, a client grant on that resource server authorizing third-party clients (`default_for: "third_party_clients"`, `allow_all_scopes: true`), and corrects the tenant's `resource_parameter_profile` to `"compatibility"` if needed.
 4. Import `https://github.com/mustafadeel/auth0-ext-wellknown` as a separate Custom Extension in the same tenant. Keep its name `.well-known` and `useHashName: false`. It requires no configuration — it derives the MCP resource URL and tenant issuer from each request automatically.
 5. On the same setup page, promote a connection to domain-level if none is promoted yet. Third-party and dynamically registered MCP clients can only authenticate through a domain-level connection.
-6. Register the MCP client: if Dynamic Client Registration is enabled for the tenant most clients register themselves, otherwise follow the manual application setup shown on the setup page.
+6. Register the MCP client: if Dynamic Client Registration or Client ID Metadata Document support is enabled for the tenant most clients register themselves; the setup page has a button to enable either directly if it isn't already. Otherwise follow the manual application setup shown on the setup page.
 7. Connect Claude, Codex, or MCP Inspector to the displayed `/mcp` URL and complete OAuth.
 
 The public MCP, health, meta, and metadata routes never change tenant configuration. Only the Dashboard-admin-protected setup routes can provision the resource server and list/promote connections. `GET /meta` serves `webtask.json`'s contents verbatim and is unauthenticated by design, matching the equivalent route in other Auth0 extensions.
